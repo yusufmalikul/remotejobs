@@ -4,7 +4,7 @@ find_jobs.py  <job-posting-URL>  [--out ./jobs]
 
 • Downloads the raw HTML of the page
 • Sends it to Gemini with a structured-JSON prompt
-• Saves Gemini’s JSON reply verbatim to ./jobs/YYYY-MM-DD-slug.json
+• Saves Gemini's JSON reply verbatim to ./jobs/YYYY-MM-DD-slug.json
 """
 
 import argparse, json, os, sys
@@ -58,6 +58,7 @@ Schema (**keys must appear in this order**):
 ↑  END HTML ↑
 """.strip()
 
+MANIFEST = "urls.txt"
 
 def extract_json(html: str) -> dict:
     """Ask Gemini to produce the JSON blob. Retries once on bad JSON."""
@@ -79,12 +80,29 @@ def extract_json(html: str) -> dict:
         follow = follow.strip("`").lstrip("json").strip()
         return json.loads(follow)
 
+def load_seen(out_dir: Path) -> set[str]:
+    out_dir = Path(out_dir)
+    mf = out_dir / MANIFEST
+    if not mf.exists():              # first run
+        return set()
+    with mf.open() as f:
+        return {line.rstrip("\n") for line in f}
+
+def append_url(out_dir: Path, url: str):
+    out_dir = Path(out_dir)
+    with (out_dir / MANIFEST).open("a") as f:
+        f.write(url + "\n")
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("url", help="Job posting URL")
-    ap.add_argument("--out", default="./jobs", help="Output directory")
+    ap.add_argument("--out", default="./docs/jobs", help="Output directory")
     args = ap.parse_args()
+
+    seen = load_seen("./docs/jobs")
+    if args.url in seen:
+        print("↩︎ skip – already scraped")
+        return
 
     html = requests.get(args.url, timeout=30).text
     data = extract_json(html)
@@ -95,13 +113,14 @@ def main():
 
     # filename: posted-date if we have it, else today
     date_part = (data.get("posted_date") or datetime.utcnow().date().isoformat())
-    slug = os.path.splitext(Path(urlparse(args.url).path).name)[0][:40]
+    slug = os.path.splitext(Path(urlparse(args.url).path).name)[0][:80]
     out_file = Path(args.out) / f"{date_part}-{slug}.json"
     out_file.parent.mkdir(parents=True, exist_ok=True)
 
     with out_file.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+    append_url(args.out, args.url)
     print("✓ wrote", out_file)
 
 
