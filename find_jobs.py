@@ -97,7 +97,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("url", help="Job posting URL")
     ap.add_argument("--out", default="./docs/jobs", help="Output directory")
+    ap.add_argument("--api-key", help="Gemini API Key")
     args = ap.parse_args()
+
+    global GEN_KEY
+    if not GEN_KEY and args.api_key:
+        GEN_KEY = args.api_key
 
     seen = load_seen("./docs/jobs")
     if args.url in seen:
